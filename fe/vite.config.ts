@@ -31,6 +31,6 @@ export default defineConfig({
       },
     ],
   },
-  server: { port: PORT, host: true },
-  preview: { port: PORT, host: true },
+  server: { port: PORT, host: '127.0.0.1', proxy: { '/api': { target: process.env.API_URL || 'http://127.0.0.1:8080' } } },
+  preview: { port: PORT, host: '127.0.0.1' },
 });
