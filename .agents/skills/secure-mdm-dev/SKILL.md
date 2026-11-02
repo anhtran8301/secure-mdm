@@ -1,50 +1,77 @@
 ---
 name: secure-mdm-dev
-description: Develop a requested change in the Secure MDM repository through analysis, implementation, focused skill review, and verification. Use when the user explicitly invokes $secure-mdm-dev or requests this workflow.
+description: Take a Secure MDM feature, bug or refactor from idea to verified change - align, spec, slice, build test-first, review and verify with this repo's checks. Use when the user invokes /secure-mdm-dev or $secure-mdm-dev.
+disable-model-invocation: true
 ---
 
-# Secure MDM development workflow
+# Secure MDM development flow
 
-Run this workflow only when explicitly requested. It coordinates work in the active Codex session; it does not schedule jobs or install hooks. The user supplies the feature, bug, or refactor after `$secure-mdm-dev`. If no task is supplied, ask for the intended change before editing files.
+The user supplies the change after the command. If none is given, ask for it before touching files.
+Reply in the user's language. Read `AGENTS.md`, then `be/AGENTS.md` and/or `fe/AGENTS.md` for the
+layers you will touch. Check `git status` and treat existing uncommitted edits as the user's.
 
-## Understand the change
+Two things apply at every step, without being asked: look up any library, framework or language API
+with Context7 before relying on memory (`AGENTS.md` explains how and lists the ids), and apply
+`ponytail` (smallest change, reuse before adding). Pick other skills by the situation table in
+`AGENTS.md`; never ask the user which skill to use.
 
-Locate the repository containing `fe/package.json` and `be/pom.xml`. Read applicable repository instructions, current scripts, and the relevant README. Inspect the working diff and identify existing user edits before making changes.
+Scale the flow to the change: a typo or one-line fix goes straight to **Build** and **Verify**.
+A bug starts with **Diagnose**. Anything that changes behavior, contracts or data goes through all steps.
 
-Trace the affected flow and state the intended behavior, scope, and acceptance criteria briefly. Ask for missing requirements only when they affect correctness. Use `brainstorming` for feature/design work when available, respecting its approval stages and the user's existing decisions. Do not restart approved design discussions. For a bug, reproduce or identify its cause before patching.
+## 1. Align - `grill-with-docs`
 
-## Implement and select relevant guidance
+Interview the user until scope, acceptance criteria and edge cases are settled, using
+`GLOSSARY.md` terms. Check claims against the code (tenancy, locks, revisions, leases). Record
+new terms in the glossary and real trade-offs as ADRs in `docs/adr/`. Do not reopen decisions
+already recorded in an ADR unless the user asks; flag conflicts explicitly.
 
-Use `ponytail` to keep the change focused on the request and existing project patterns. Read the appropriate installed skills rather than loading all skills for every task:
+## 2. Spec and slice - `to-spec`, then `to-tickets`
 
-| Work | Guidance |
-| --- | --- |
-| React implementation or performance | `vercel-react-best-practices`; apply React rules compatible with the installed version. The frontend uses Vite, so Next.js-specific rules apply only if that stack actually changes. |
-| Component API or composition changes | `vercel-composition-patterns` |
-| UI design or visual changes | `design-taste-frontend`; preserve existing MUI components, theme, and branding unless redesign is requested |
-| UI accessibility and usability review | `web-design-guidelines` |
-| Correctness review of the task's diff | `code-review-expert` |
-| Complexity review when abstractions or dependencies change | `ponytail-review` |
+Publish the agreed spec and tracer-bullet tickets to GitHub Issues (`docs/agents/issue-tracker.md`).
+Skip publishing when the user wants to stay local; keep the same structure in the conversation.
 
-Use Context7 for library API documentation, matching installed versions when possible. Do not send secrets or private source code as documentation queries. If a skill or tool is unavailable, report the limitation and continue with the relevant available checks; do not silently install it.
+## 3. Build - `implement` with `tdd`
 
-The backend uses Java 21, Spring Boot, WebFlux, R2DBC, and Liquibase. Read `be/README.md` for its current contracts. Preserve reactive behavior and the documented exception responses. Make schema changes with new Liquibase changesets rather than editing applied migrations.
+One vertical slice at a time, red-green-refactor at these seams:
 
-## Review, verify, and fix
+- Backend behavior: a scenario in `WorkflowTests` (real HTTP + MySQL); pure rules in `LogicTests`.
+- Frontend: Vitest for logic in `src/lib` or schemas; Playwright `e2e/workflow.spec.ts` for flows.
+- Simulator: its Vitest suite; keep Java-TypeScript signature interop green.
 
-Review the changes attributable to this task, including interactions with existing code. Fix findings within the authorized scope. Report unrelated pre-existing problems separately rather than broadening the patch.
+Follow the module rules (backend: a module under `securemdm/src/<module>` goes controller -> service
+interface -> repository, DTO <-> entity via mapper, no cycles between modules; frontend: TanStack
+Query key factories, RHF + Zod). Schema changes are new Liquibase changesets. Reuse what exists
+(es-toolkit, Day.js, Minimal components) before adding code or a dependency.
+For React work consult `vercel-react-best-practices`; for component APIs `vercel-composition-patterns`;
+for new or restyled screens `design-taste-frontend` (app-screen rules, keep the MUI theme).
 
-Select checks based on affected behavior, using the repository's current commands:
+## Diagnose - `diagnosing-bugs`
 
-- Frontend changes: from `fe`, run `yarn lint` and `yarn build` when Yarn is the active package manager (currently declared in package.json). If this checkout uses npm, the equivalents are `npm run lint` and `npm run build`; preserve the existing lockfiles. Neither command is a runtime behavior test.
-- UI flow changes: use Playwright MCP against the running local app to exercise the changed interactions and relevant error states; inspect console/network errors and responsive layout when affected. Record the URL and scenario actually checked. MCP browser checks do not imply a saved automated test suite. Do not assume `@playwright/test` is installed.
-- Backend changes: from `be`, run a focused Maven test while iterating, then `./mvnw verify` for the affected backend delivery. The full suite uses Testcontainers and requires Docker. For advice-only checks, `./mvnw -Dtest=GlobalExceptionHandlerTests verify` is available, but does not replace the full suite. Report missing Docker or other prerequisites as incomplete verification, not a passing result.
-- Add a regression test for nontrivial changed behavior when the existing test setup supports it. Documentation-only changes need link/command consistency checks, not application builds.
+Reproduce first (failing test or script), find the cause, then fix through **Build**.
 
-After fixing an issue, rerun the checks relevant to that fix. Stop optional testing once acceptance criteria and required checks pass. If a check repeatedly fails for an external prerequisite, or continuing would require a product decision or expanding scope, report the specific blocker instead of disabling the check or claiming completion.
+## 4. Review - `code-review`
 
-Strix scans are a separate, explicitly requested security workflow. Check its current prerequisites when requested; do not upload source or start scans as a default development step. Commit, push, deploy, and changes to shared services require their own user authorization.
+Review the diff since the starting point on Standards (AGENTS.md files, ADRs) and Spec (the
+ticket). Add `code-review-expert` for SOLID, security and bug findings and `ponytail-review` to
+catch over-engineering. For UI changes also run `web-design-guidelines`. Fix findings within scope;
+report unrelated pre-existing problems separately.
 
-## Report the outcome
+## 5. Verify
 
-Reply in the user's language with the changed behavior, important files, actual review and test results, and any remaining blocker. Distinguish passed, failed, and not-run checks. Include only commands and evidence observed in this run.
+Run only what the change affects, from the right directory:
+
+- Backend: `./mvnw spotless:apply`, then `./mvnw verify` (Checkstyle, Spotless check, Testcontainers, JaCoCo 80/70). Needs Docker.
+- Frontend: `corepack yarn lint`, `corepack yarn typecheck`, `corepack yarn test`, `corepack yarn build`.
+- Flows across services: the E2E commands in `AGENTS.md`; for UI behavior also exercise the running
+  app with `playwright-cli` (`corepack yarn playwright-cli ...` from the repo root) and check
+  console/network errors. Record the URL and scenario checked.
+- Simulator: `corepack yarn typecheck && corepack yarn test`.
+
+Re-run the checks a fix touches. If a prerequisite is missing or a check keeps failing for an
+external reason, stop and report the blocker; never disable a check or claim it passed.
+
+## Report
+
+State the changed behavior, key files, and each check as passed / failed / not run, with only
+evidence observed in this session. Commit (Conventional Commits), push, deploy and Strix scans
+need explicit user authorization.
