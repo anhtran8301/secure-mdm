@@ -2,5 +2,10 @@
 <databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
-    <!-- Include numbered, immutable migrations here in execution order. -->
+    <changeSet id="001-core" author="secure-mdm">
+        <sqlFile path="../scripts/sql/001-core.sql" relativeToChangelogFile="true" splitStatements="true"/>
+    </changeSet>
+    <changeSet id="002-command-order" author="secure-mdm">
+        <sqlFile path="../scripts/sql/002-command-order.sql" relativeToChangelogFile="true" splitStatements="true"/>
+    </changeSet>
 </databaseChangeLog>

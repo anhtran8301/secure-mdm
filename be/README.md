@@ -1,105 +1,31 @@
-# Secure MDM Backend
+# SecureMDM Backend
 
-Java 21, Spring Boot 4.1.2, WebFlux, R2DBC MySQL và Liquibase. Swagger cung cấp tài liệu API; JaCoCo và SonarQube phục vụ kiểm tra chất lượng code.
+Java 21, Spring Boot 4.1.2, WebFlux, R2DBC/MySQL 8.4 và Liquibase. Backend là một deployable duy nhất, tổ chức theo module nghiệp vụ (`identity`, `device`, `policy`, `command`, `audit`, `dashboard`) nằm trong thư mục `securemdm/src`, mỗi module có các layer `controller`, `service` (interface + impl), `repository`, `entity`, `dto`, `mapper` riêng; chỉ `config`, `security`, `exception`, `utils`, `common` dùng chung. Quy ước chi tiết nằm trong [AGENTS.md](AGENTS.md); lý do chọn kiến trúc nằm trong [ADR](../docs/adr/).
 
-## Chạy local
+Hướng dẫn chạy toàn bộ ứng dụng, tài khoản demo, keys, Docker và E2E nằm trong [README gốc](../README.md). Hợp đồng API và transaction nằm trong [ARCHITECTURE](../docs/ARCHITECTURE.md).
 
-Yêu cầu Java 21 và Docker đang chạy. Các lệnh dưới đây chạy từ thư mục `be`.
+## Kiểm thử
 
-```bash
-cp .env.example .env
+```sh
+./mvnw verify
 ```
 
-Điền `DB_PASSWORD`, `MYSQL_ROOT_PASSWORD` bằng hai mật khẩu riêng trong `.env`. Nếu chạy SonarQube, điền thêm `SONAR_DB_PASSWORD`. File này không được commit. Có thể tạo từng mật khẩu bằng `openssl rand -hex 24`.
+Cần Java 21 và Docker đang chạy. Tests tự tạo MySQL Testcontainers với database/credentials riêng, không kết nối MySQL local. Khóa EC test được sinh vào thư mục tạm; không cần `.local` hoặc secrets để chạy tests. `WorkflowTests` dùng WebTestClient với HTTP server thật, controllable Clock và profile demo với password chỉ dành cho test.
 
-```bash
-docker compose up -d --wait mysql
-set -a
-. ./.env
-set +a
-./mvnw spring-boot:run
-```
+- `ArchitectureTests`: không có vòng phụ thuộc giữa các module, package dùng chung không import module, controller không gọi repository.
+- `GlobalExceptionHandlerTests`: CommonException, field validation, HTTP errors và sanitized 500.
+- `SecureMdmApplicationTests`: context + Liquibase migration trên MySQL thật.
+- `WorkflowTests`: CSRF, refresh reuse/concurrency/logout, RBAC, tenant isolation, enrollment one-use/concurrency/expiry/revoke, credential expiry, audit rollback, claim concurrency/FIFO/lease/TTL/result dedup, policy version/revision/compliance và revoke.
+- `LogicTests`: command payload/result schemas, state transitions, compliance và ES256/key separation; xuất `target/java-commands.json` cho simulator interoperability.
 
-Compose tự đọc `.env`; Spring Boot không tự đọc file này, nên cần export biến như trên hoặc cấu hình environment trong IDE. `.env` được source bởi shell nên chỉ dùng các phép gán biến, đặt giá trị đặc biệt trong dấu nháy. Nếu dùng SDKMAN, chạy `sdk env` để chọn Java 21 theo `.sdkmanrc`.
+`verify` sinh JaCoCo HTML/XML tại `target/site/jacoco` và kiểm tra tối thiểu 80% line / 70% branch trên các package `*/service`, `*/repository`, `security`. Không skip Testcontainers khi Docker thiếu; đó là verification chưa hoàn tất.
 
-| Thành phần | Mặc định |
-| --- | --- |
-| Backend | `http://localhost:8080` |
-| Health | `http://localhost:8080/actuator/health` |
-| Swagger UI | `http://localhost:8080/swagger-ui.html` |
-| OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
-| MySQL | `localhost:3307/secure_mdm`, user `secure_mdm` |
+`verify` còn chạy Checkstyle (`google_checks.xml`, vi phạm sẽ làm build fail) và `spotless:check`. Có thể format lại toàn bộ bằng `./mvnw spotless:apply`. SonarLint chạy trong IDE ở connected mode tới SonarQube local (profile `quality` của `be/compose.yaml`), còn `./mvnw sonar:sonar` gửi kết quả Checkstyle và JaCoCo lên đó.
 
-`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` điều khiển cả kết nối R2DBC và Liquibase JDBC. `SERVER_PORT` đổi cổng HTTP. `API_DOCS_ENABLED=false` tắt Swagger UI và OpenAPI. Chưa có API nghiệp vụ nên danh sách operations ban đầu có thể rỗng.
+Chạy nhanh advice tests khi chỉ sửa error contract: `./mvnw -Dtest=GlobalExceptionHandlerTests test`. Lệnh này không thay thế full verify/coverage gate.
 
-MySQL tạo database/user khi volume được khởi tạo lần đầu. Đổi password trong `.env` không tự cập nhật tài khoản trong volume cũ; cần đổi password trong MySQL tương ứng. Liquibase cần database đã tồn tại và tài khoản có quyền DDL trong database đó.
+## Chạy backend local
 
-## Exception handling
+Từ root chạy `node scripts/keys.mjs`, khởi động MySQL theo README, build jar qua `./mvnw verify`, rồi `node scripts/backend.mjs`. Launcher đọc `.local/demo.env`, dùng profile demo và private keys ngoài git. Khởi động thông thường cần DB_PASSWORD, ACCESS_KEY_FILE, COMMAND_KEY_FILE; không tự tạo admin account.
 
-`advice/GlobalExceptionHandler` xử lý lỗi từ annotated controllers, gồm cả lỗi phát ra từ `Mono`/`Flux` trước khi response được gửi. Phần này tham khảo `simple-bank`, dùng các class trong package `com.anhtran.secure_mdm.common`:
-
-```java
-throw new CommonException("MDM01", "Device not found", HttpStatus.NOT_FOUND);
-
-// Trong reactive pipeline:
-return Mono.error(new CommonException("MDM02", "Device already enrolled", HttpStatus.CONFLICT));
-
-throw new ValidateException("RQ01", Map.of("name", "Name is required"), HttpStatus.BAD_REQUEST);
-```
-
-`CommonException` trả đúng HTTP status cùng JSON `{ "code": "MDM01", "message": "Device not found", "status": "NOT_FOUND" }`. Chỉ truyền thông báo nghiệp vụ được phép hiển thị cho client vào exception này.
-
-`ValidateException` giữ contract của simple-bank: trả trực tiếp map `{ "name": "Name is required" }` với status đã chỉ định; code được giữ trong exception nhưng không đưa vào response map. Validation `@Valid` trên request body cũng trả HTTP 400 với map lỗi theo field, gộp nhiều thông báo của cùng field. Lỗi cấp object dùng tên object làm key.
-
-Các lỗi HTTP của Spring như JSON sai định dạng, media type không hỗ trợ và `ResponseStatusException` giữ status/headers, dùng response ProblemDetail mặc định của WebFlux. Chi tiết lỗi HTTP 5xx được ẩn. Lỗi ngoài dự kiến trả HTTP 500 với code `9999`, message `Internal server error`; stack trace chỉ ghi vào log server.
-
-Test riêng cho advice không cần database hoặc Docker:
-
-```bash
-./mvnw -Dtest=GlobalExceptionHandlerTests verify
-```
-
-## Migration
-
-`src/main/resources/db/changelog/changelog-master.xml` là điểm vào duy nhất, ban đầu chưa có changeset nghiệp vụ. Thêm file đánh số như `001-create-tables.xml`, `002-init-data.xml`, `003-add-indexes.xml` và include theo thứ tự từ master. SQL dài đặt trong `db/scripts/sql` rồi tham chiếu bằng `sqlFile`.
-
-Giữ nguyên changeset đã chạy; mọi thay đổi tiếp theo dùng changeset mới. Không dùng `runAlways` cho tạo schema. Liquibase chạy trước khi ứng dụng sẵn sàng; migration lỗi khiến startup thất bại.
-
-## Test và coverage
-
-```bash
-./mvnw clean verify
-```
-
-Testcontainers tự tạo MySQL 8.4 với cổng và credentials riêng, không dùng MySQL local hoặc `.env`. Docker phải hoạt động; test không tự bỏ qua khi Docker thiếu. Changelog trong test resources include master rồi tạo dữ liệu kiểm thử, được đọc lại qua R2DBC. Test HTTP kiểm tra health, OpenAPI, Swagger assets và trạng thái tắt tài liệu.
-
-Báo cáo JaCoCo: `target/site/jacoco/index.html` và `target/site/jacoco/jacoco.xml`. JaCoCo chạy cùng Maven lifecycle; build/test không cần SonarQube và chưa áp ngưỡng coverage.
-
-## SonarQube local
-
-Điền `SONAR_DB_PASSWORD` trong `.env`, sau đó:
-
-```bash
-docker compose --profile quality up -d sonarqube
-docker compose --profile quality logs -f sonarqube
-```
-
-Đợi server sẵn sàng rồi mở `http://localhost:9000`. Đăng nhập local lần đầu bằng `admin`/`admin`, đổi mật khẩu, tạo project key `secure-mdm-be` (tên `Secure MDM Backend`) và tạo project analysis token. PostgreSQL chỉ phục vụ SonarQube, không expose ra host. Các volume lưu database và dữ liệu SonarQube qua các lần restart.
-
-Export `SONAR_TOKEN` vào shell từ nguồn riêng, không ghi token vào repo hoặc `.env.example`. Scanner nhận `SONAR_HOST_URL` từ môi trường:
-
-```bash
-export SONAR_HOST_URL=http://localhost:9000
-./mvnw clean verify
-./mvnw sonar:sonar
-```
-
-Nếu đổi `SONAR_PORT`, cập nhật `SONAR_HOST_URL` tương ứng. Scanner chạy từ `be`, phân tích backend và import XML coverage do lệnh `verify` vừa tạo. Sau scan, kiểm tra Background Tasks đã xử lý xong và dashboard có coverage. Scanner gửi thành công chưa đồng nghĩa Quality Gate đạt; mặc định không chờ Quality Gate và không ràng buộc ngưỡng coverage.
-
-Profile `quality` chạy độc lập với MySQL của ứng dụng. Docker cần đủ tài nguyên cho SonarQube/Elasticsearch (tối thiểu khoảng 4 GB RAM cho SonarQube); xem log khi container không sẵn sàng. Image `sonarqube:community` theo mẫu simple-bank là tag cập nhật, cần pin version trước khi dùng cho môi trường dùng chung lâu dài.
-
-```bash
-docker compose --profile quality stop
-```
-
-Lệnh trên giữ volume. Chỉ xóa volume khi chủ động muốn mất dữ liệu local; không dùng `down -v` để restart thông thường.
+`be/compose.yaml` cũ chỉ phục vụ MySQL/SonarQube tùy chọn. Dùng root `compose.yaml` cho demo đầy đủ; không bật đồng thời hai MySQL trên cùng port3307. SonarQube/Strix không phải điều kiện chạy demo và không tự chạy trong workflow này.

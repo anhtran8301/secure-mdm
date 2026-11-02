@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<!-- Google style, minus mandatory Javadoc: comments explain non-obvious "why", not every member. -->
+<suppressions>
+  <suppress checks="MissingJavadoc(Method|Type|Package)"/>
+  <suppress checks="JavadocParagraph|SummaryJavadoc|JavadocMethod|InvalidJavadocPosition"/>
+</suppressions>
