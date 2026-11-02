@@ -1,0 +1,6 @@
+interface:
+  display_name: "Secure MDM Dev"
+  short_description: "Phân tích, code, review và kiểm thử Secure MDM"
+  default_prompt: "Dùng $secure-mdm-dev để triển khai yêu cầu sau trong dự án Secure MDM: "
+policy:
+  allow_implicit_invocation: false
