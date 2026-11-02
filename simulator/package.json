@@ -1,0 +1,7 @@
+{
+  "name": "secure-mdm-simulator", "version": "1.0.0", "private": true, "type": "module",
+  "packageManager": "yarn@1.22.22", "engines": { "node": ">=24" },
+  "scripts": { "dev": "tsx src/cli.ts", "build": "tsc", "typecheck": "tsc --noEmit", "test": "vitest run", "start": "node dist/cli.js" },
+  "dependencies": { "jose": "^6.1.0", "proper-lockfile": "^4.1.2" },
+  "devDependencies": { "@types/node": "^24", "@types/proper-lockfile": "^4.1.4", "tsx": "^4.20.0", "typescript": "^5.8.2", "vitest": "^3.2.4" }
+}
