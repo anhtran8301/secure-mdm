@@ -1,0 +1,22 @@
+{
+  "name": "secure-mdm",
+  "private": true,
+  "description": "Repository tooling: git hooks, commit convention and shared formatting",
+  "packageManager": "yarn@1.22.22",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "lint:staged": "lint-staged",
+    "commitlint": "commitlint --edit"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@playwright/cli": "0.1.23",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10"
+  }
+}

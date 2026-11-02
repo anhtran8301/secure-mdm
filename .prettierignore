@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+be/target
+fe/playwright-report
+fe/test-results
+.local
+.agents
+.claude/skills

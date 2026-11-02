@@ -1,0 +1,57 @@
+name: secure-mdm-demo
+services:
+  mysql:
+    image: mysql:8.4
+    ports: ['127.0.0.1:${DB_PORT:-3307}:3306']
+    environment:
+      MYSQL_DATABASE: secure_mdm
+      MYSQL_USER: secure_mdm
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Run node scripts/keys.mjs}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Run node scripts/keys.mjs}
+    volumes: ['mysql_data:/var/lib/mysql']
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u $$MYSQL_USER -D $$MYSQL_DATABASE -e 'SELECT 1' >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  backend:
+    build: ./be
+    environment:
+      SPRING_PROFILES_ACTIVE: demo
+      SERVER_ADDRESS: 0.0.0.0
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_PASSWORD: ${DB_PASSWORD}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?Run node scripts/keys.mjs}
+      ACCESS_KEY_FILE: /keys/access.json
+      COMMAND_KEY_FILE: /keys/${COMMAND_KEY_NAME:-command-1.json}
+      SECURE_COOKIES: 'false'
+    volumes:
+      [
+        './.local/access.json:/keys/access.json:ro',
+        './.local/command-1.json:/keys/command-1.json:ro',
+        './.local/command-2.json:/keys/command-2.json:ro',
+      ]
+    ports: ['127.0.0.1:8080:8080']
+    depends_on:
+      mysql: { condition: service_healthy }
+  frontend:
+    build: ./fe
+    ports: ['127.0.0.1:8081:80']
+    depends_on: [backend]
+  simulator:
+    build: ./simulator
+    profiles: [simulator]
+    # Shares backend's loopback; no insecure non-loopback HTTP exception is required.
+    network_mode: service:backend
+    environment:
+      ENROLLMENT_TOKEN: ${ENROLLMENT_TOKEN:-}
+    volumes: ['simulator_state:/state', './.local/command-public.json:/keys/command-public.json:ro']
+    depends_on: [backend]
+volumes:
+  mysql_data:
+  simulator_state:

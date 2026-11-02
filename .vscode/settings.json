@@ -1,3 +1,26 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive"
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "editor.formatOnSave": true,
+  "files.eol": "\n",
+  "[java]": {
+    "editor.tabSize": 2,
+    "editor.rulers": [100]
+  },
+  "java.format.settings.url": "https://raw.githubusercontent.com/google/styleguide/gh-pages/eclipse-java-google-style.xml",
+  "java.format.settings.profile": "GoogleStyle",
+  "java.checkstyle.configuration": "/google_checks.xml",
+  "java.checkstyle.properties": {
+    "org.checkstyle.google.suppressionfilter.config": "${workspaceFolder}/be/config/checkstyle/suppressions.xml"
+  },
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.workingDirectories": [{ "directory": "fe", "changeProcessCWD": true }],
+  "sonarlint.connectedMode.project": {
+    "connectionId": "secure-mdm-local",
+    "projectKey": "secure-mdm-be"
+  }
 }

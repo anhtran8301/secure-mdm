@@ -1,0 +1,73 @@
+name: Verify SecureMDM
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Enable pinned Yarn
+        run: corepack enable
+      - name: Repository tooling
+        run: corepack yarn install --frozen-lockfile
+      - name: Commit messages follow Conventional Commits
+        if: github.event_name == 'pull_request'
+        run: >-
+          npx --no-install commitlint --verbose
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
+      - name: Backend format (Spotless), lint (Checkstyle), tests + coverage gate
+        working-directory: be
+        run: ./mvnw -B verify
+      - name: Frontend dependencies
+        working-directory: fe
+        run: corepack yarn install --frozen-lockfile
+      - name: Frontend lint, build and unit tests
+        working-directory: fe
+        run: |
+          corepack yarn lint
+          corepack yarn build
+          corepack yarn test
+      - name: Simulator and Java interoperability
+        working-directory: simulator
+        env:
+          JAVA_FIXTURE: ../be/target/java-commands.json
+        run: |
+          corepack yarn install --frozen-lockfile
+          corepack yarn typecheck
+          corepack yarn test
+          corepack yarn build
+      - name: Isolated E2E database and browser
+        run: |
+          node scripts/keys.mjs .local/e2e
+          docker compose -f compose.e2e.yaml --env-file .local/e2e/demo.env up -d --wait
+          cd fe
+          corepack yarn playwright install --with-deps chromium
+      - name: End-to-end workflows
+        working-directory: fe
+        run: corepack yarn test:e2e
+      - name: Stop E2E database
+        if: always()
+        run: docker compose -f compose.e2e.yaml --env-file .local/e2e/demo.env down
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-evidence
+          retention-days: 7
+          path: |
+            be/target/surefire-reports
+            be/target/site/jacoco
+            fe/playwright-report
+            fe/test-results

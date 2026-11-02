@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "SecureMdmApplication (demo)",
+      "request": "launch",
+      "mainClass": "com.anhtran.securemdm.SecureMdmApplication",
+      "cwd": "${workspaceFolder}/be",
+      "envFile": "${workspaceFolder}/.local/demo.env",
+      "env": {
+        "SPRING_PROFILES_ACTIVE": "demo",
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "3307",
+        "SERVER_PORT": "8080",
+        "ACCESS_KEY_FILE": "${workspaceFolder}/.local/access.json",
+        "COMMAND_KEY_FILE": "${workspaceFolder}/.local/command-1.json",
+        "SECURE_COOKIES": "false"
+      }
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+.local/
+.env
+.env.*
+!.env.example
+node_modules/
+.playwright-mcp/
+test-results/
+playwright-report/
+coverage/
+.DS_Store
+.claude/settings.local.json
+
+# Private keys and keystores
+*.pem
+*.pfx
+*.p12
+*.jks
+*.keystore
+
+# Build output, logs, crash dumps
+target/
+dist/
+*.tsbuildinfo
+*.log
+hs_err_pid*
+.scannerwork/
+
+# Yarn 1 is the only package manager; yarn.lock is the lockfile
+package-lock.json
+
+# Editors (shared .vscode settings, extensions and launch config stay tracked)
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# Agent tooling local state
+.playwright-cli/
+CLAUDE.local.md
+AGENTS.local.md
+.claude/worktrees/
