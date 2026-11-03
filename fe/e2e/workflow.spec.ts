@@ -35,6 +35,7 @@ async function admin(request: APIRequestContext, org = 'alpha') {
   return { Authorization: `Bearer ${accessToken}` };
 }
 async function simulator(dir: string, args: string[], token?: string, expectedCode = 0) {
+  let errors = '';
   const code = await new Promise<number>((done, reject) => {
     const child = spawn(
       process.execPath,
@@ -56,7 +57,6 @@ async function simulator(dir: string, args: string[], token?: string, expectedCo
         stdio: ['ignore', 'ignore', 'pipe'],
       }
     );
-    let errors = '';
     child.stderr.on('data', (chunk) => {
       errors += chunk.toString();
     });
@@ -66,6 +66,7 @@ async function simulator(dir: string, args: string[], token?: string, expectedCo
     );
   });
   expect(code).toBe(expectedCode);
+  return errors;
 }
 test('login → simulator enroll → policy → signed command → audit → refresh/logout', async ({
   page,
@@ -89,6 +90,9 @@ test('login → simulator enroll → policy → signed command → audit → ref
     await expect(page.getByRole('dialog')).not.toBeVisible();
     await page.getByRole('navigation').getByRole('link', { name: 'Thiết bị', exact: true }).click();
     await page.getByRole('link', { name, exact: true }).click();
+    const { serial } = JSON.parse(await readFile(resolve(directory, 'state.json'), 'utf8'));
+    await expect(page.getByRole('heading', { name: 'Chứng chỉ thiết bị' })).toBeVisible();
+    await expect(page.getByText(serial, { exact: true })).toBeVisible();
     await page.getByLabel('Policy', { exact: true }).click();
     await page.getByRole('option', { name, exact: true }).click();
     await page.getByLabel('Version cần gán').click();
@@ -116,7 +120,7 @@ test('login → simulator enroll → policy → signed command → audit → ref
     await rm(directory, { recursive: true, force: true });
   }
 });
-test('lost result + restart deduplicates effect, isolates tenants and revokes credential', async ({
+test('lost result + restart deduplicates effect, isolates tenants and revokes the device', async ({
   request,
 }) => {
   const directory = await mkdtemp(resolve(tmpdir(), 'mdm-recovery-'));
@@ -154,14 +158,8 @@ test('lost result + restart deduplicates effect, isolates tenants and revokes cr
     expect(
       (await request.post(`${base}/devices/${identity.deviceId}/revoke`, { headers: alpha })).ok()
     ).toBeTruthy();
-    expect(
-      (
-        await request.post(`${base}/device-agent/heartbeat`, {
-          headers: { Authorization: `Bearer ${identity.credential}` },
-          data: state.inventory,
-        })
-      ).status()
-    ).toBe(401);
+    // The revoked certificate no longer authenticates the device's signed requests.
+    expect(await simulator(directory, ['run', '--once'], undefined, 1)).toContain('HTTP 401');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

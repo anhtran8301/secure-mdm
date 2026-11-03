@@ -56,7 +56,7 @@ export function PolicyListView() {
                 {
                   title: 'Yêu cầu',
                   render: (p) =>
-                    `API ≥ ${p.config.minAndroidApiLevel} · Screen lock ${p.config.requireScreenLock ? 'bắt buộc' : 'tùy chọn'} · ${p.config.blockedPackages.length} ứng dụng bị chặn`,
+                    `API ≥ ${p.config.minAndroidApiLevel} · Screen lock ${p.config.requireScreenLock ? 'bắt buộc' : 'tùy chọn'} · Mã hóa ổ đĩa ${p.config.requireDiskEncryption ? 'bắt buộc' : 'tùy chọn'} · ${p.config.blockedPackages.length} ứng dụng bị chặn`,
                 },
                 {
                   title: 'Thao tác',

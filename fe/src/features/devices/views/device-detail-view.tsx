@@ -22,6 +22,7 @@ import { Status, Heading, QueryState, ErrorMessage } from 'src/components/consol
 
 import { deviceQueries } from '../queries';
 import { useRevokeDevice } from '../mutations';
+import { certificateStatus } from '../certificate';
 
 export function DeviceDetailView() {
   const { id = '' } = useParams();
@@ -47,7 +48,7 @@ export function DeviceDetailView() {
                   disabled={!admin || d.status === 'REVOKED'}
                   onClick={() => setConfirm(true)}
                 >
-                  Thu hồi credential
+                  Thu hồi thiết bị
                 </Button>
               }
             />
@@ -59,6 +60,35 @@ export function DeviceDetailView() {
             <Typography variant="body2" sx={{ overflowWrap: 'anywhere', mb: 3 }}>
               Device ID: {d.id}
             </Typography>
+            {d.certificate && (
+              <Box mb={3}>
+                <Stack direction="row" gap={1} alignItems="center" mb={1}>
+                  <Typography variant="h6" component="h2">
+                    Chứng chỉ thiết bị
+                  </Typography>
+                  <Status value={certificateStatus(d.certificate)} />
+                </Stack>
+                <Box
+                  component="dl"
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: 'max-content 1fr' },
+                    columnGap: 2,
+                    rowGap: 0.5,
+                    m: 0,
+                    '& dt': { color: 'text.secondary' },
+                    '& dd': { m: 0, fontFamily: 'monospace', overflowWrap: 'anywhere' },
+                  }}
+                >
+                  <dt>Serial</dt>
+                  <dd>{d.certificate.serial}</dd>
+                  <dt>SHA-256</dt>
+                  <dd>{d.certificate.fingerprint}</dd>
+                  <dt>Hết hạn</dt>
+                  <dd>{formatTimestamp(d.certificate.notAfter)}</dd>
+                </Box>
+              </Box>
+            )}
             <ErrorMessage error={revoke.error} />
             <Typography variant="h6" component="h2" mb={1}>
               Inventory
@@ -82,8 +112,8 @@ export function DeviceDetailView() {
             <Dialog open={confirm} onClose={() => setConfirm(false)} aria-labelledby="revoke-title">
               <DialogTitle id="revoke-title">Thu hồi quyền của {d.name}?</DialogTitle>
               <DialogContent>
-                Credential mất hiệu lực ngay. Lệnh chưa giao sẽ bị hủy; lệnh đã giao có thể đã thực
-                thi và không thể đảo ngược.
+                Chứng chỉ thiết bị bị thu hồi ngay, mọi request ký bằng khóa của nó sẽ bị từ chối.
+                Lệnh chưa giao sẽ bị hủy; lệnh đã giao có thể đã thực thi và không thể đảo ngược.
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setConfirm(false)}>Giữ thiết bị</Button>

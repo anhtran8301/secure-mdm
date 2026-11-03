@@ -22,6 +22,15 @@ export type Device = {
   lastSeenAt: number | null;
   inventory: Record<string, unknown>;
   assignmentRevision: number;
+  /** Only on the detail endpoint. */
+  certificate?: DeviceCertificate | null;
+};
+
+export type DeviceCertificate = {
+  serial: string;
+  fingerprint: string;
+  notAfter: number;
+  revoked: boolean;
 };
 
 export type CommandType =
@@ -43,6 +52,7 @@ export type Command = {
 
 export type PolicyConfig = {
   requireScreenLock: boolean;
+  requireDiskEncryption: boolean;
   minAndroidApiLevel: number;
   blockedPackages: string[];
 };

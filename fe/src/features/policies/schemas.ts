@@ -10,6 +10,7 @@ export function policyFormSchema(isNewPolicy: boolean) {
       ? z.string().trim().min(1, 'Nhập tên policy.').max(120, 'Tối đa 120 ký tự.')
       : z.string(),
     requireScreenLock: z.boolean(),
+    requireDiskEncryption: z.boolean(),
     minAndroidApiLevel: z
       .number('Nhập số từ 1 đến 100.')
       .int('Nhập số nguyên.')
@@ -41,6 +42,7 @@ export function policyFormDefaults(policy: Policy | null): PolicyFormValues {
   return {
     name: policy?.name ?? '',
     requireScreenLock: policy?.config.requireScreenLock ?? true,
+    requireDiskEncryption: policy?.config.requireDiskEncryption ?? true,
     minAndroidApiLevel: policy?.config.minAndroidApiLevel ?? 34,
     blockedPackages: policy?.config.blockedPackages.join('\n') ?? '',
   };
@@ -49,6 +51,7 @@ export function policyFormDefaults(policy: Policy | null): PolicyFormValues {
 export function toPolicyConfig(values: PolicyFormValues): PolicyConfig {
   return {
     requireScreenLock: values.requireScreenLock,
+    requireDiskEncryption: values.requireDiskEncryption,
     minAndroidApiLevel: values.minAndroidApiLevel,
     blockedPackages: toPackages(values.blockedPackages),
   };

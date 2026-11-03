@@ -47,6 +47,7 @@ export function PolicyDialog({ policy, onClose }: Props) {
               />
             )}
             <RHFCheckbox name="requireScreenLock" label="Bắt buộc screen lock" />
+            <RHFCheckbox name="requireDiskEncryption" label="Bắt buộc mã hóa ổ đĩa" />
             <RHFTextField
               name="minAndroidApiLevel"
               label="Android API tối thiểu"
