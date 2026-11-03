@@ -30,6 +30,12 @@ already recorded in an ADR unless the user asks; flag conflicts explicitly.
 Publish the agreed spec and tracer-bullet tickets to GitHub Issues (`docs/agents/issue-tracker.md`).
 Skip publishing when the user wants to stay local; keep the same structure in the conversation.
 
+## 2b. Plan gate - `cross-review` (optional)
+
+Only if the user asked for it, or confirms when you offer it for a large or risky change (never for
+small ones): send the agreed plan to the other agent and loop until both agree (max 3 rounds, then
+the user decides). Details, model tiers and the finding format are in the `cross-review` skill.
+
 ## 3. Build - `implement` with `tdd`
 
 One vertical slice at a time, red-green-refactor at these seams:
@@ -55,6 +61,9 @@ Review the diff since the starting point on Standards (AGENTS.md files, ADRs) an
 ticket). Add `code-review-expert` for SOLID, security and bug findings and `ponytail-review` to
 catch over-engineering. For UI changes also run `web-design-guidelines`. Fix findings within scope;
 report unrelated pre-existing problems separately.
+
+Optional **Code gate**: only if the user asked for it or confirms your offer (same rule as the Plan
+gate), run `cross-review` on the diff after your own review fixes and before **Verify**.
 
 ## 5. Verify
 

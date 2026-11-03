@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Cross Review'
+  short_description: 'Vòng review plan/code qua lại giữa Codex và Claude đến khi thống nhất'
+  default_prompt: 'Dùng $cross-review để review kế hoạch hoặc diff sau với Claude: '
+policy:
+  allow_implicit_invocation: false

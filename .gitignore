@@ -41,3 +41,6 @@ package-lock.json
 CLAUDE.local.md
 AGENTS.local.md
 .claude/worktrees/
+
+# cross-review handoff files (plans, diffs, reviewer output)
+.scratch/
