@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 const root = resolve(process.argv[2] || '.local');
 mkdirSync(root, { recursive: true, mode: 0o700 });
 const publicKeys = [];
-for (const name of ['access', 'command-1', 'command-2']) {
+for (const name of ['access', 'command-1', 'command-2', 'device-ca']) {
   const filename = resolve(root, `${name}.json`);
   let jwk;
   if (existsSync(filename)) jwk = JSON.parse(readFileSync(filename, 'utf8'));
@@ -14,7 +14,8 @@ for (const name of ['access', 'command-1', 'command-2']) {
     jwk = { ...privateKey.export({ format: 'jwk' }), kid: name, alg: 'ES256', use: 'sig' };
     writeFileSync(filename, JSON.stringify(jwk), { mode: 0o600, flag: 'wx' });
   }
-  if (name.startsWith('command')) {
+  // Devices are provisioned with command-1 only; they learn later keys from signed trust bundles.
+  if (name === 'command-1') {
     const { d, ...pub } = jwk;
     publicKeys.push(pub);
   }

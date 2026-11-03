@@ -10,7 +10,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-/** Resolves a bearer credential (admin JWT or opaque device credential) to an {@link Actor}. */
+/** Resolves an admin bearer JWT or a Device Proof to an {@link Actor}. */
 @Component
 @RequiredArgsConstructor
 public class BearerAuthenticationManager implements ReactiveAuthenticationManager {
@@ -18,8 +18,10 @@ public class BearerAuthenticationManager implements ReactiveAuthenticationManage
 
   @Override
   public Mono<Authentication> authenticate(Authentication authentication) {
-    return actorAuthenticator
-        .authenticate(authentication.getCredentials().toString())
+    Object credentials = authentication.getCredentials();
+    return (credentials instanceof DeviceProofRequest proof
+            ? actorAuthenticator.authenticateDevice(proof)
+            : actorAuthenticator.authenticate(credentials.toString()))
         .<Authentication>map(
             actor ->
                 new UsernamePasswordAuthenticationToken(

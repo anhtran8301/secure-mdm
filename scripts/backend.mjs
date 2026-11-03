@@ -32,6 +32,7 @@ const child = spawn(java, ['-jar', resolve(root, 'be/target/secure-mdm-0.0.1-SNA
     SERVER_PORT: e2e ? '8082' : '8080',
     ACCESS_KEY_FILE: resolve(local, 'access.json'),
     COMMAND_KEY_FILE: resolve(local, 'command-1.json'),
+    DEVICE_CA_KEY_FILE: resolve(local, 'device-ca.json'),
     SECURE_COOKIES: 'false',
     ...(e2e ? { MDM_LEASE_MS: '1500', MDM_SWEEP_MS: '1000' } : {}),
   },

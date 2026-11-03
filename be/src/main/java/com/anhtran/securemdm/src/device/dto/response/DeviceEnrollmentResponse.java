@@ -12,6 +12,11 @@ import lombok.NoArgsConstructor;
 public class DeviceEnrollmentResponse {
   private String deviceId;
   private String organizationId;
-  private String credential;
+
+  /** Certificate serial (hex); devices use it as the {@code kid} of their Device Proofs. */
+  private String serial;
+
+  private String certificate;
+  private String caCertificate;
   private Long expiresAt;
 }

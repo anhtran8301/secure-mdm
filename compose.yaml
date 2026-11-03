@@ -28,13 +28,16 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DEMO_PASSWORD: ${DEMO_PASSWORD:?Run node scripts/keys.mjs}
       ACCESS_KEY_FILE: /keys/access.json
-      COMMAND_KEY_FILE: /keys/${COMMAND_KEY_NAME:-command-1.json}
+      COMMAND_KEY_FILES: ${COMMAND_KEY_FILES:-/keys/command-1.json}
+      COMMAND_ACTIVE_KID: ${COMMAND_ACTIVE_KID:-}
+      DEVICE_CA_KEY_FILE: /keys/device-ca.json
       SECURE_COOKIES: 'false'
     volumes:
       [
         './.local/access.json:/keys/access.json:ro',
         './.local/command-1.json:/keys/command-1.json:ro',
         './.local/command-2.json:/keys/command-2.json:ro',
+        './.local/device-ca.json:/keys/device-ca.json:ro',
       ]
     ports: ['127.0.0.1:8080:8080']
     depends_on:

@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.anhtran.securemdm.security.SigningKeys;
 import com.anhtran.securemdm.src.command.dto.request.CreateCommandRequest;
 import com.anhtran.securemdm.src.command.service.CommandService;
 import com.anhtran.securemdm.src.device.dto.request.EnrollDeviceRequest;
+import com.anhtran.securemdm.src.device.service.DeviceService;
 import com.anhtran.securemdm.src.device.service.EnrollmentService;
 import com.anhtran.securemdm.src.identity.service.AuthService;
 import com.anhtran.securemdm.utils.JsonUtils;
@@ -81,6 +83,8 @@ class WorkflowTests extends SecureMdmApplicationTests {
   @Autowired CommandService commands;
   @Autowired EnrollmentService enrollments;
   @Autowired AuthService auth;
+  @Autowired SigningKeys keys;
+  @Autowired DeviceService deviceService;
   WebTestClient http;
 
   long count(String sql, String arg) {
@@ -99,6 +103,8 @@ class WorkflowTests extends SecureMdmApplicationTests {
 
   class Client {
     String access;
+    com.nimbusds.jose.jwk.ECKey deviceKey;
+    String serial;
     final Map<String, String> cookies = new HashMap<>();
 
     Map<String, Object> call(String method, String path, Object body, int status) {
@@ -111,6 +117,12 @@ class WorkflowTests extends SecureMdmApplicationTests {
           http.method(HttpMethod.valueOf(method)).uri(path).cookies(c -> cookies.forEach(c::add));
       if (access != null) {
         request.header("Authorization", "Bearer " + access);
+      }
+      if (deviceKey != null) {
+        request.header(
+            "Authorization",
+            "DeviceProof "
+                + TestDevices.proof(deviceKey, serial, method, "/api/v1" + path, clock.millis()));
       }
       if (cookies.containsKey("XSRF-TOKEN")) {
         request.header("X-XSRF-TOKEN", cookies.get("XSRF-TOKEN"));
@@ -148,29 +160,52 @@ class WorkflowTests extends SecureMdmApplicationTests {
     return c;
   }
 
+  /** Enrolls a fresh test device; the result also carries its private key under "key". */
   Map<String, Object> enroll(Client a) {
     var t = a.call("POST", "/enrollment-tokens", null, 200);
-    return new Client()
-        .call(
-            "POST",
-            "/device-enrollments",
-            enrollment(t.get("token"), UUID.randomUUID().toString()),
-            200);
+    var key = TestDevices.newKey();
+    var e =
+        new HashMap<>(
+            new Client()
+                .call(
+                    "POST",
+                    "/device-enrollments",
+                    enrollment(t.get("token"), UUID.randomUUID().toString(), TestDevices.csr(key)),
+                    200));
+    e.put("key", key);
+    return e;
   }
 
   Map<String, Object> enrollment(Object token, String uid) {
-    return Map.of("token", token, "deviceUid", uid, "name", "Test Android");
+    return enrollment(token, uid, TestDevices.csr(TestDevices.newKey()));
+  }
+
+  Map<String, Object> enrollment(Object token, String uid, String csr) {
+    return Map.of("token", token, "deviceUid", uid, "name", "Test Android", "csr", csr);
   }
 
   Client device(Map<String, Object> e) {
     Client c = new Client();
-    c.access = (String) e.get("credential");
+    c.deviceKey = (com.nimbusds.jose.jwk.ECKey) e.get("key");
+    c.serial = (String) e.get("serial");
     return c;
+  }
+
+  String proofHeader(Map<String, Object> e, String method, String path) {
+    return "DeviceProof "
+        + TestDevices.proof(
+            (com.nimbusds.jose.jwk.ECKey) e.get("key"),
+            (String) e.get("serial"),
+            method,
+            "/api/v1" + path,
+            clock.millis());
   }
 
   Map<String, Object> inventory(boolean lock) {
     return Map.of(
         "screenLockEnabled",
+        lock,
+        "diskEncrypted",
         lock,
         "androidApiLevel",
         35,
@@ -274,6 +309,8 @@ class WorkflowTests extends SecureMdmApplicationTests {
         Map.of(
             "requireScreenLock",
             true,
+            "requireDiskEncryption",
+            true,
             "minAndroidApiLevel",
             34,
             "blockedPackages",
@@ -318,13 +355,41 @@ class WorkflowTests extends SecureMdmApplicationTests {
     command(a, id, "REPORT_STATUS");
     d.call("POST", "/device-agent/commands/claim", null, 200);
     command(a, id, "SYNC_DEVICE");
+    var certificate = (Map<?, ?>) a.call("GET", "/devices/" + id, null, 200).get("certificate");
+    assertEquals(e.get("serial"), certificate.get("serial"));
+    assertEquals(false, certificate.get("revoked"));
+    assertEquals(64, ((String) certificate.get("fingerprint")).length());
+    assertEquals(e.get("expiresAt"), certificate.get("notAfter"));
     a.call("POST", "/devices/" + id + "/revoke", null, 200);
     d.call("POST", "/device-agent/heartbeat", inventory(true), 401);
+    assertEquals(
+        true,
+        ((Map<?, ?>) a.call("GET", "/devices/" + id, null, 200).get("certificate")).get("revoked"));
+    assertEquals(
+        1,
+        count(
+            "SELECT COUNT(*) FROM device_certificates WHERE device_id=? AND revoked_at IS NOT NULL",
+            id));
+    var revokedCert =
+        (List<?>)
+            a.call("GET", "/audit-logs?action=DEVICE_CERTIFICATE_REVOKED&size=100", null, 200)
+                .get("items");
+    assertTrue(
+        revokedCert.stream()
+            .anyMatch(r -> e.get("serial").equals(((Map<?, ?>) r).get("resourceId"))));
     var rows = (List<?>) a.call("GET", "/devices/" + id + "/commands", null, 200).get("items");
     assertTrue(rows.stream().anyMatch(r -> ((Map<?, ?>) r).get("status").equals("UNKNOWN")));
     assertTrue(rows.stream().anyMatch(r -> ((Map<?, ?>) r).get("status").equals("CANCELLED")));
     a.call("GET", "/dashboard/overview", null, 200);
     a.call("GET", "/audit-logs?action=DEVICE_REVOKED", null, 200);
+    // Revoking again revokes no certificate, so it adds no certificate audit row.
+    a.call("POST", "/devices/" + id + "/revoke", null, 200);
+    assertEquals(
+        1,
+        count(
+            "SELECT COUNT(*) FROM audit_logs WHERE action='DEVICE_CERTIFICATE_REVOKED'"
+                + " AND resource_id=?",
+            (String) e.get("serial")));
   }
 
   @Test
@@ -401,7 +466,7 @@ class WorkflowTests extends SecureMdmApplicationTests {
           () ->
               http.post()
                   .uri("/device-agent/commands/claim")
-                  .header("Authorization", "Bearer " + e.get("credential"))
+                  .header("Authorization", proofHeader(e, "POST", "/device-agent/commands/claim"))
                   .exchange()
                   .returnResult(byte[].class)
                   .getStatus()
@@ -435,7 +500,11 @@ class WorkflowTests extends SecureMdmApplicationTests {
         () ->
             enrollments
                 .enroll(
-                    new EnrollDeviceRequest((String) token.get("token"), uid, "Rollback device"))
+                    new EnrollDeviceRequest(
+                        (String) token.get("token"),
+                        uid,
+                        "Rollback device",
+                        TestDevices.csr(TestDevices.newKey())))
                 .contextWrite(ctx -> ctx.put("correlationId", "x".repeat(1000)))
                 .block());
     assertEquals(0, count("SELECT COUNT(*) FROM devices WHERE device_uid=?", uid));
@@ -491,6 +560,163 @@ class WorkflowTests extends SecureMdmApplicationTests {
     assertTrue(rows.stream().noneMatch(r -> id.equals(((Map<?, ?>) r).get("resourceId"))));
     clock.advance(2_592_001);
     device(e).call("POST", "/device-agent/heartbeat", inventory(true), 401);
+  }
+
+  @Test
+  void enrollmentRequiresValidP256Csr() throws Exception {
+    var a = login("alpha", "org_admin");
+    var t = a.call("POST", "/enrollment-tokens", null, 200);
+    String uid = UUID.randomUUID().toString();
+    var p384 = java.security.KeyPairGenerator.getInstance("EC");
+    p384.initialize(new java.security.spec.ECGenParameterSpec("secp384r1"));
+    for (String csr : List.of("not a csr", TestDevices.csr(p384.generateKeyPair(), "CN=device"))) {
+      assertEquals(
+          "Invalid CSR",
+          new Client()
+              .call("POST", "/device-enrollments", enrollment(t.get("token"), uid, csr), 400)
+              .get("message"));
+    }
+    // The rejected attempts left the token unused.
+    var key = TestDevices.newKey();
+    var e =
+        new Client()
+            .call(
+                "POST",
+                "/device-enrollments",
+                enrollment(t.get("token"), uid, TestDevices.csr(key)),
+                200);
+    assertTrue(((String) e.get("certificate")).startsWith("-----BEGIN CERTIFICATE-----"));
+    assertTrue(((String) e.get("caCertificate")).startsWith("-----BEGIN CERTIFICATE-----"));
+    assertTrue(e.get("credential") == null);
+    var issued =
+        (List<?>)
+            a.call("GET", "/audit-logs?action=DEVICE_CERTIFICATE_ISSUED&size=100", null, 200)
+                .get("items");
+    assertTrue(
+        issued.stream().anyMatch(r -> e.get("serial").equals(((Map<?, ?>) r).get("resourceId"))));
+  }
+
+  @Test
+  void deviceProofsBindKeyRequestTimeAndAreSingleUse() throws Exception {
+    clock.now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    var a = login("alpha", "org_admin");
+    var e = enroll(a);
+    var key = (com.nimbusds.jose.jwk.ECKey) e.get("key");
+    String serial = (String) e.get("serial");
+    String heartbeat = "/api/v1/device-agent/heartbeat";
+    long now = clock.millis();
+    // Accepted: inside the window, both edges included.
+    for (long iat : List.of(now, now - 60_000, now + 60_000)) {
+      heartbeat(TestDevices.proof(key, serial, "POST", heartbeat, iat), 200);
+    }
+    // Rejected: outside the window, wrong method or target, wrong key, unknown serial, bearer.
+    var other = TestDevices.newKey();
+    for (String proof :
+        List.of(
+            TestDevices.proof(key, serial, "POST", heartbeat, now - 61_000),
+            TestDevices.proof(key, serial, "POST", heartbeat, now + 61_000),
+            TestDevices.proof(key, serial, "GET", heartbeat, now),
+            TestDevices.proof(key, serial, "POST", "/api/v1/device-agent/commands/claim", now),
+            TestDevices.proof(other, serial, "POST", heartbeat, now),
+            TestDevices.proof(key, "00ff", "POST", heartbeat, now))) {
+      heartbeat(proof, 401);
+    }
+    http.post()
+        .uri("/device-agent/heartbeat")
+        .header("Authorization", "Bearer d_not-a-device-credential")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(inventory(true))
+        .exchange()
+        .expectStatus()
+        .isUnauthorized();
+
+    // Single use: a replay fails, also after the first use failed in the business layer.
+    String once = TestDevices.proof(key, serial, "POST", heartbeat, now);
+    heartbeat(once, 200);
+    heartbeat(once, 401);
+    String result = "/device-agent/commands/" + UUID.randomUUID() + "/result";
+    String failing = TestDevices.proof(key, serial, "POST", "/api/v1" + result, now);
+    var body = Map.of("attemptId", "x", "status", "SUCCEEDED", "result", Map.of());
+    for (int status : List.of(404, 401)) {
+      http.post()
+          .uri(result)
+          .header("Authorization", "DeviceProof " + failing)
+          .contentType(MediaType.APPLICATION_JSON)
+          .bodyValue(body)
+          .exchange()
+          .expectStatus()
+          .isEqualTo(status);
+    }
+    // Concurrent use of one proof: exactly one request gets through.
+    String shared = TestDevices.proof(key, serial, "POST", heartbeat, now);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      Callable<Integer> task = () -> heartbeatStatus(shared);
+      var jobs = executor.invokeAll(List.of(task, task, task));
+      var statuses = new java.util.ArrayList<Integer>();
+      for (var job : jobs) {
+        statuses.add(job.get());
+      }
+      assertEquals(1, statuses.stream().filter(code -> code == 200).count());
+      assertEquals(2, statuses.stream().filter(code -> code == 401).count());
+    }
+    // Purging old ids never reopens the window: a future-dated proof stays used.
+    String future = TestDevices.proof(key, serial, "POST", heartbeat, now + 60_000);
+    heartbeat(future, 200);
+    clock.advance(61);
+    deviceService.purgeProofReplays().block();
+    heartbeat(future, 401);
+    clock.advance(60);
+    deviceService.purgeProofReplays().block();
+    heartbeat(future, 401);
+  }
+
+  @Test
+  void deviceCertificateValidityBounds() {
+    clock.now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    var a = login("alpha", "org_admin");
+    var e = enroll(a);
+    var d = device(e);
+    long start = clock.now.getEpochSecond();
+    clock.now = Instant.ofEpochSecond(start - 1);
+    d.call("POST", "/device-agent/heartbeat", inventory(true), 401);
+    clock.now = Instant.ofEpochSecond(start);
+    d.call("POST", "/device-agent/heartbeat", inventory(true), 200);
+    clock.now = Instant.ofEpochSecond(start + 2_592_000 - 1);
+    d.call("POST", "/device-agent/heartbeat", inventory(true), 200);
+    clock.now = Instant.ofEpochSecond(start + 2_592_000);
+    d.call("POST", "/device-agent/heartbeat", inventory(true), 401);
+  }
+
+  void heartbeat(String proof, int status) {
+    assertEquals(status, heartbeatStatus(proof));
+  }
+
+  int heartbeatStatus(String proof) {
+    return http.post()
+        .uri("/device-agent/heartbeat")
+        .header("Authorization", "DeviceProof " + proof)
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(inventory(true))
+        .exchange()
+        .returnResult(byte[].class)
+        .getStatus()
+        .value();
+  }
+
+  @Test
+  void deviceFetchesSignedCommandKeys() throws Exception {
+    var a = login("alpha", "ORG_ADMIN");
+    var d = device(enroll(a));
+    @SuppressWarnings("unchecked")
+    var bundles =
+        (List<String>) d.call("GET", "/device-agent/command-keys", null, 200).get("bundles");
+    assertEquals(1, bundles.size());
+    var bundle = com.nimbusds.jwt.SignedJWT.parse(bundles.get(0));
+    assertEquals("mdm-trust+jwt", bundle.getHeader().getType().getType());
+    assertTrue(
+        bundle.verify(
+            new com.nimbusds.jose.crypto.ECDSAVerifier(keys.getCommandKey().toPublicJWK())));
+    a.call("GET", "/device-agent/command-keys", null, 403);
   }
 
   @Test

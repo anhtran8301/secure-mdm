@@ -11,12 +11,11 @@ public final class AppConstants {
 
   public static final String REFRESH_TOKEN_PREFIX = "r_";
   public static final String ENROLLMENT_TOKEN_PREFIX = "e_";
-  public static final String DEVICE_CREDENTIAL_PREFIX = "d_";
 
   public static final long SESSION_TTL_MS = 604_800_000L;
   public static final long ACCESS_TOKEN_TTL_MS = 600_000L;
   public static final long ENROLLMENT_TOKEN_TTL_MS = 900_000L;
-  public static final long DEVICE_CREDENTIAL_TTL_MS = 2_592_000_000L;
+  public static final long DEVICE_CERTIFICATE_TTL_MS = 2_592_000_000L;
 
   private AppConstants() {}
 }

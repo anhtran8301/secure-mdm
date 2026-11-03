@@ -23,7 +23,7 @@ class SecureMdmApplicationTests {
   static {
     try {
       KEYS = java.nio.file.Files.createTempDirectory("mdm-test-keys");
-      for (String name : java.util.List.of("access", "command")) {
+      for (String name : java.util.List.of("access", "command", "device-ca")) {
         java.nio.file.Files.writeString(
             KEYS.resolve(name + ".json"),
             new com.nimbusds.jose.jwk.gen.ECKeyGenerator(com.nimbusds.jose.jwk.Curve.P_256)
@@ -39,7 +39,8 @@ class SecureMdmApplicationTests {
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry properties) {
     properties.add("mdm.access-key", () -> KEYS.resolve("access.json").toString());
-    properties.add("mdm.command-key", () -> KEYS.resolve("command.json").toString());
+    properties.add("mdm.command-keys", () -> KEYS.resolve("command.json").toString());
+    properties.add("mdm.device-ca-key", () -> KEYS.resolve("device-ca.json").toString());
     properties.add("debug", () -> "false");
     properties.add("mdm.scheduling-enabled", () -> "false");
     properties.add(

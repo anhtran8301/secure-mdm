@@ -10,5 +10,6 @@ import java.util.List;
 /** Device state reported by the agent (heartbeat, policy report). */
 public record Inventory(
     boolean screenLockEnabled,
+    boolean diskEncrypted,
     @Min(1) @Max(100) int androidApiLevel,
     @NotNull @Size(max = 200) List<@NotBlank @Size(max = 180) String> installedPackages) {}

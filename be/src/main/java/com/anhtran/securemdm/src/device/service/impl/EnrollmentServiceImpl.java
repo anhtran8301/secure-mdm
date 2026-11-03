@@ -3,6 +3,7 @@ package com.anhtran.securemdm.src.device.service.impl;
 import com.anhtran.securemdm.exception.CommonException;
 import com.anhtran.securemdm.security.Actor;
 import com.anhtran.securemdm.security.ActorKind;
+import com.anhtran.securemdm.security.DeviceCertificateAuthority;
 import com.anhtran.securemdm.security.Role;
 import com.anhtran.securemdm.security.SecureTokens;
 import com.anhtran.securemdm.src.audit.service.AuditService;
@@ -10,10 +11,10 @@ import com.anhtran.securemdm.src.device.dto.request.EnrollDeviceRequest;
 import com.anhtran.securemdm.src.device.dto.response.DeviceEnrollmentResponse;
 import com.anhtran.securemdm.src.device.dto.response.EnrollmentTokenResponse;
 import com.anhtran.securemdm.src.device.entity.Device;
-import com.anhtran.securemdm.src.device.entity.DeviceCredential;
+import com.anhtran.securemdm.src.device.entity.DeviceCertificate;
 import com.anhtran.securemdm.src.device.entity.EnrollmentToken;
 import com.anhtran.securemdm.src.device.entity.enums.DeviceStatus;
-import com.anhtran.securemdm.src.device.repository.DeviceCredentialRepository;
+import com.anhtran.securemdm.src.device.repository.DeviceCertificateRepository;
 import com.anhtran.securemdm.src.device.repository.DeviceRepository;
 import com.anhtran.securemdm.src.device.repository.EnrollmentTokenRepository;
 import com.anhtran.securemdm.src.device.service.EnrollmentService;
@@ -33,7 +34,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
   private final EnrollmentTokenRepository tokenRepository;
   private final DeviceRepository deviceRepository;
-  private final DeviceCredentialRepository credentialRepository;
+  private final DeviceCertificateRepository certificateRepository;
+  private final DeviceCertificateAuthority certificateAuthority;
   private final AuditService auditService;
   private final TransactionalOperator transactions;
   private final Clock clock;
@@ -99,8 +101,11 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     }
     String org = token.getOrganizationId();
     String deviceId = IdUtils.newId();
-    String credential = SecureTokens.generate(AppConstants.DEVICE_CREDENTIAL_PREFIX);
-    long expiresAt = now + AppConstants.DEVICE_CREDENTIAL_TTL_MS;
+    Actor device = new Actor(org, deviceId, Role.DEVICE.name(), ActorKind.DEVICE.name(), null);
+    // Issue first: an invalid CSR fails before anything is written, so the token stays unused.
+    var issued =
+        certificateAuthority.issue(
+            request.csr(), org, deviceId, now, now + AppConstants.DEVICE_CERTIFICATE_TTL_MS);
     return tokenRepository
         .markUsed(token.getId(), now)
         .then(
@@ -118,21 +123,30 @@ public class EnrollmentServiceImpl implements EnrollmentService {
                     .newEntity(true)
                     .build()))
         .then(
-            credentialRepository.save(
-                DeviceCredential.builder()
+            certificateRepository.save(
+                DeviceCertificate.builder()
                     .id(IdUtils.newId())
                     .organizationId(org)
                     .deviceId(deviceId)
-                    .secretHash(SecureTokens.hash(credential))
-                    .expiresAt(expiresAt)
+                    .serial(issued.serial())
+                    .publicKeyJwk(issued.publicKeyJwk())
+                    .fingerprint(issued.fingerprint())
+                    .certificatePem(issued.pem())
+                    .notBefore(issued.notBefore())
+                    .notAfter(issued.notAfter())
                     .newEntity(true)
                     .build()))
+        .then(auditService.record(device, "DEVICE_ENROLLED", "device", deviceId))
         .then(
             auditService.record(
-                new Actor(org, deviceId, Role.DEVICE.name(), ActorKind.DEVICE.name(), null),
-                "DEVICE_ENROLLED",
-                "device",
-                deviceId))
-        .thenReturn(new DeviceEnrollmentResponse(deviceId, org, credential, expiresAt));
+                device, "DEVICE_CERTIFICATE_ISSUED", "certificate", issued.serial()))
+        .thenReturn(
+            new DeviceEnrollmentResponse(
+                deviceId,
+                org,
+                issued.serial(),
+                issued.pem(),
+                certificateAuthority.caCertificatePem(),
+                issued.notAfter()));
   }
 }

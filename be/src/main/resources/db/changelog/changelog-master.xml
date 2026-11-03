@@ -8,4 +8,10 @@
     <changeSet id="002-command-order" author="secure-mdm">
         <sqlFile path="../scripts/sql/002-command-order.sql" relativeToChangelogFile="true" splitStatements="true"/>
     </changeSet>
+    <changeSet id="003-device-certificates" author="secure-mdm">
+        <sqlFile path="../scripts/sql/003-device-certificates.sql" relativeToChangelogFile="true" splitStatements="true"/>
+    </changeSet>
+    <changeSet id="004-drop-device-credentials" author="secure-mdm">
+        <sqlFile path="../scripts/sql/004-drop-device-credentials.sql" relativeToChangelogFile="true" splitStatements="true"/>
+    </changeSet>
 </databaseChangeLog>

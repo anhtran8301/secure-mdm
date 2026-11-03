@@ -23,4 +23,7 @@ public class DeviceResponse {
   private Long assignmentRevision;
   private String connectivity;
   private String compliance;
+
+  /** Only on the detail endpoint. */
+  private DeviceCertificateResponse certificate;
 }

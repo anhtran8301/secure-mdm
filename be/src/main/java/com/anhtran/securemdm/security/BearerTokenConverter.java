@@ -11,10 +11,21 @@ import reactor.core.publisher.Mono;
 @Component
 public class BearerTokenConverter implements ServerAuthenticationConverter {
   private static final String PREFIX = "Bearer ";
+  private static final String DEVICE_PREFIX = "DeviceProof ";
 
   @Override
   public Mono<Authentication> convert(ServerWebExchange exchange) {
-    String header = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+    var request = exchange.getRequest();
+    String header = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+    if (header != null && header.startsWith(DEVICE_PREFIX)) {
+      String query = request.getURI().getRawQuery();
+      String target = request.getURI().getRawPath() + (query == null ? "" : "?" + query);
+      return Mono.just(
+          new UsernamePasswordAuthenticationToken(
+              "device",
+              new DeviceProofRequest(
+                  header.substring(DEVICE_PREFIX.length()), request.getMethod().name(), target)));
+    }
     if (header == null || !header.startsWith(PREFIX)) {
       return Mono.empty();
     }

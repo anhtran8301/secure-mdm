@@ -3,11 +3,14 @@ package com.anhtran.securemdm.src.identity.service.impl;
 import com.anhtran.securemdm.exception.CommonException;
 import com.anhtran.securemdm.security.Actor;
 import com.anhtran.securemdm.security.ActorKind;
+import com.anhtran.securemdm.security.DeviceProofRequest;
+import com.anhtran.securemdm.security.DeviceProofs;
 import com.anhtran.securemdm.security.JwtTokenProvider;
 import com.anhtran.securemdm.security.Role;
 import com.anhtran.securemdm.security.SecureTokens;
 import com.anhtran.securemdm.src.audit.service.AuditService;
-import com.anhtran.securemdm.src.device.repository.DeviceCredentialRepository;
+import com.anhtran.securemdm.src.device.repository.DeviceCertificateRepository;
+import com.anhtran.securemdm.src.device.repository.DeviceProofReplayRepository;
 import com.anhtran.securemdm.src.identity.dto.model.AuthTokens;
 import com.anhtran.securemdm.src.identity.dto.request.LoginRequest;
 import com.anhtran.securemdm.src.identity.dto.response.UserProfileResponse;
@@ -22,10 +25,12 @@ import com.anhtran.securemdm.src.identity.repository.projection.RefreshSessionVi
 import com.anhtran.securemdm.src.identity.service.AuthService;
 import com.anhtran.securemdm.utils.AppConstants;
 import com.anhtran.securemdm.utils.IdUtils;
+import com.nimbusds.jose.jwk.ECKey;
 import java.text.ParseException;
 import java.time.Clock;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
@@ -41,7 +46,8 @@ public class AuthServiceImpl implements AuthService {
   private final OrganizationRepository organizationRepository;
   private final AuthSessionRepository sessionRepository;
   private final RefreshTokenRepository refreshTokenRepository;
-  private final DeviceCredentialRepository credentialRepository;
+  private final DeviceCertificateRepository certificateRepository;
+  private final DeviceProofReplayRepository proofReplayRepository;
   private final JwtTokenProvider jwtTokenProvider;
   private final PasswordEncoder passwordEncoder;
   private final AuditService auditService;
@@ -183,21 +189,49 @@ public class AuthServiceImpl implements AuthService {
   }
 
   @Override
+  public Mono<Actor> authenticateDevice(DeviceProofRequest request) {
+    return Mono.defer(
+            () -> {
+              var jwt = DeviceProofs.parse(request.proof());
+              long now = clock.millis();
+              return certificateRepository
+                  .findUsable(jwt.getHeader().getKeyID(), now)
+                  .flatMap(
+                      cert -> {
+                        ECKey key;
+                        try {
+                          key = ECKey.parse(cert.getPublicKeyJwk());
+                        } catch (ParseException ex) {
+                          return Mono.error(CommonException.unauthorized());
+                        }
+                        var proof =
+                            DeviceProofs.verify(jwt, key, request.method(), request.target(), now);
+                        // Own statement, committed before the request's work: a used jti stays
+                        // used even if that work fails. Kept until the proof cannot pass anyway.
+                        return proofReplayRepository
+                            .remember(
+                                cert.getDeviceId(),
+                                proof.jti(),
+                                proof.iat() + DeviceProofs.WINDOW_MS)
+                            .onErrorMap(
+                                DataIntegrityViolationException.class,
+                                ex -> CommonException.unauthorized())
+                            .thenReturn(
+                                new Actor(
+                                    cert.getOrganizationId(),
+                                    cert.getDeviceId(),
+                                    Role.DEVICE.name(),
+                                    ActorKind.DEVICE.name(),
+                                    null));
+                      });
+            })
+        .switchIfEmpty(Mono.error(CommonException.unauthorized()));
+  }
+
+  @Override
   public Mono<Actor> authenticate(String bearerToken) {
     return Mono.defer(
             () -> {
-              if (bearerToken.startsWith(AppConstants.DEVICE_CREDENTIAL_PREFIX)) {
-                return credentialRepository
-                    .findActiveDevice(SecureTokens.hash(bearerToken), clock.millis())
-                    .map(
-                        device ->
-                            new Actor(
-                                device.getOrganizationId(),
-                                device.getId(),
-                                Role.DEVICE.name(),
-                                ActorKind.DEVICE.name(),
-                                null));
-              }
               var claims = jwtTokenProvider.verify(bearerToken);
               String sessionId;
               String tenant;

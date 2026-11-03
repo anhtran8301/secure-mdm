@@ -6,10 +6,12 @@ import com.anhtran.securemdm.exception.CommonException;
 import com.anhtran.securemdm.security.Actor;
 import com.anhtran.securemdm.src.audit.service.AuditService;
 import com.anhtran.securemdm.src.device.dto.model.Inventory;
+import com.anhtran.securemdm.src.device.dto.response.DeviceCertificateResponse;
 import com.anhtran.securemdm.src.device.dto.response.DeviceResponse;
 import com.anhtran.securemdm.src.device.entity.enums.DeviceStatus;
 import com.anhtran.securemdm.src.device.mapper.DeviceMapper;
-import com.anhtran.securemdm.src.device.repository.DeviceCredentialRepository;
+import com.anhtran.securemdm.src.device.repository.DeviceCertificateRepository;
+import com.anhtran.securemdm.src.device.repository.DeviceProofReplayRepository;
 import com.anhtran.securemdm.src.device.repository.DeviceRepository;
 import com.anhtran.securemdm.src.device.service.DeviceRevocationListener;
 import com.anhtran.securemdm.src.device.service.DeviceService;
@@ -29,7 +31,8 @@ public class DeviceServiceImpl implements DeviceService {
   private static final int MAX_SEARCH_LENGTH = 120;
 
   private final DeviceRepository deviceRepository;
-  private final DeviceCredentialRepository credentialRepository;
+  private final DeviceCertificateRepository certificateRepository;
+  private final DeviceProofReplayRepository proofReplayRepository;
   private final List<DeviceRevocationListener> revocationListeners;
   private final AuditService auditService;
   private final DeviceMapper deviceMapper;
@@ -62,9 +65,15 @@ public class DeviceServiceImpl implements DeviceService {
           return deviceRepository
               .lockExisting(org, deviceId)
               .then(deviceRepository.markRevoked(org, deviceId))
-              .then(credentialRepository.revokeForDevice(org, deviceId, clock.millis()))
-              .then(notifyRevoked(org, deviceId))
-              .then(auditService.record(actor, "DEVICE_REVOKED", "device", deviceId))
+              .then(certificateRepository.revokeForDevice(org, deviceId, clock.millis()))
+              .flatMap(
+                  revoked ->
+                      notifyRevoked(org, deviceId)
+                          .then(auditService.record(actor, "DEVICE_REVOKED", "device", deviceId))
+                          .then(
+                              revoked == 0
+                                  ? Mono.empty()
+                                  : auditCertificateRevoked(actor, deviceId)))
               .as(transactions::transactional);
         });
   }
@@ -74,7 +83,22 @@ public class DeviceServiceImpl implements DeviceService {
     return deviceRepository
         .findView(actor.organizationId(), deviceId, offlineCutoff())
         .switchIfEmpty(Mono.error(CommonException.notFound()))
-        .map(deviceMapper::toResponse);
+        .map(deviceMapper::toResponse)
+        .flatMap(
+            response ->
+                certificateRepository
+                    .findLatest(actor.organizationId(), deviceId)
+                    .map(
+                        cert -> {
+                          response.setCertificate(
+                              new DeviceCertificateResponse(
+                                  cert.getSerial(),
+                                  cert.getFingerprint(),
+                                  cert.getNotAfter(),
+                                  cert.getRevokedAt() != null));
+                          return response;
+                        })
+                    .defaultIfEmpty(response));
   }
 
   @Override
@@ -105,5 +129,19 @@ public class DeviceServiceImpl implements DeviceService {
 
   private long offlineCutoff() {
     return clock.millis() - properties.offlineMs();
+  }
+
+  @Override
+  public Mono<Void> purgeProofReplays() {
+    return proofReplayRepository.purgeExpired(clock.millis()).then();
+  }
+
+  private Mono<Void> auditCertificateRevoked(Actor actor, String deviceId) {
+    return certificateRepository
+        .findLatest(actor.organizationId(), deviceId)
+        .flatMap(
+            cert ->
+                auditService.record(
+                    actor, "DEVICE_CERTIFICATE_REVOKED", "certificate", cert.getSerial()));
   }
 }

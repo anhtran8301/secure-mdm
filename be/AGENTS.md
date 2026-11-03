@@ -22,7 +22,7 @@ Each module root has the same layers (create only the ones a module needs):
 | Module      | Owns                                                                                       |
 | ----------- | ------------------------------------------------------------------------------------------ |
 | `identity`  | organizations, users, sessions, refresh tokens; `/auth/*`; implements `ActorAuthenticator` |
-| `device`    | devices, enrollment tokens, device credentials; heartbeat; revocation                      |
+| `device`    | devices, enrollment tokens, device certificates and proof replay ids; heartbeat; revocation |
 | `policy`    | policies, immutable versions, assignments, reports, compliance                             |
 | `command`   | signed commands, attempts, leases, FIFO queue, sweeper; cancels commands on revocation     |
 | `audit`     | append-only audit log                                                                      |
@@ -34,7 +34,7 @@ Agent-facing `/device-agent/*` endpoints live in each module's own `*AgentContro
 ## Shared packages (`securemdm/config`, `security`, `exception`, `utils`, `common`; they never import `src`)
 
 `config` (`MdmProperties`, clock, ModelMapper, transactions, OpenAPI), `security` (filter chain,
-`Actor`, `Role`, JWT, command signer, keys, `ActorAuthenticator`), `exception`
+`Actor`, `Role`, JWT, command signer, keys, Device CA, Device Proof checks, `ActorAuthenticator`), `exception`
 (`CommonException`, `ErrorCode`, `GlobalExceptionHandler`), `utils` (`AppConstants`, `PageUtils`,
 `JsonUtils`, `IdUtils`), `common` (`PageResponse`, `SqlSupport`).
 

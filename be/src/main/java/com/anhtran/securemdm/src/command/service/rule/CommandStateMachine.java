@@ -83,8 +83,11 @@ public final class CommandStateMachine {
         && result.get("inventory") instanceof Map<?, ?> inventory
         && inventory
             .keySet()
-            .equals(Set.of("screenLockEnabled", "androidApiLevel", "installedPackages"))
+            .equals(
+                Set.of(
+                    "screenLockEnabled", "diskEncrypted", "androidApiLevel", "installedPackages"))
         && inventory.get("screenLockEnabled") instanceof Boolean
+        && inventory.get("diskEncrypted") instanceof Boolean
         && inventory.get("androidApiLevel") instanceof Number n
         && n.doubleValue() == n.intValue()
         && n.intValue() >= 1

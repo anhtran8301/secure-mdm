@@ -12,6 +12,7 @@ import com.anhtran.securemdm.src.audit.service.AuditService;
 import com.anhtran.securemdm.src.command.dto.request.CommandResultRequest;
 import com.anhtran.securemdm.src.command.dto.request.CreateCommandRequest;
 import com.anhtran.securemdm.src.command.dto.response.CommandClaimResponse;
+import com.anhtran.securemdm.src.command.dto.response.CommandKeysResponse;
 import com.anhtran.securemdm.src.command.dto.response.CommandResponse;
 import com.anhtran.securemdm.src.command.entity.CommandAttempt;
 import com.anhtran.securemdm.src.command.entity.DeviceCommand;
@@ -69,7 +70,8 @@ public class CommandServiceImpl implements CommandService {
                           "device", deviceId,
                           "type", request.type(),
                           "payload", request.payload())));
-          // Serialize the actor's idempotency namespace, including requests for other devices.
+          // Serialize the actor's idempotency namespace, including requests for other
+          // devices.
           return userRepository
               .lock(org, actor.id())
               .then(deviceRepository.lockExisting(org, deviceId))
@@ -101,7 +103,8 @@ public class CommandServiceImpl implements CommandService {
       Actor actor, String deviceId, CreateCommandRequest request, String key, String hash) {
     String id = IdUtils.newId();
     long now = clock.millis();
-    // JWT exp has second precision; truncate so the stored expiry matches the signed one.
+    // JWT exp has second precision; truncate so the stored expiry matches the
+    // signed one.
     long expiresAt = ((now + properties.commandTtlMs()) / 1000) * 1000;
     String signed =
         commandSigner.sign(
@@ -286,5 +289,10 @@ public class CommandServiceImpl implements CommandService {
                     .then(reconcile(due.getOrganizationId(), due.getDeviceId()))
                     .as(transactions::transactional))
         .then();
+  }
+
+  @Override
+  public Mono<CommandKeysResponse> commandKeys() {
+    return Mono.fromSupplier(() -> new CommandKeysResponse(commandSigner.trustBundles()));
   }
 }

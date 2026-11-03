@@ -10,5 +10,6 @@ import java.util.List;
 /** Immutable rule set stored as JSON in policy_versions.config_json. */
 public record PolicyConfig(
     boolean requireScreenLock,
+    boolean requireDiskEncryption,
     @Min(1) @Max(100) int minAndroidApiLevel,
     @NotNull @Size(max = 200) List<@NotBlank @Size(max = 180) String> blockedPackages) {}

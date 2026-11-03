@@ -1,5 +1,6 @@
 package com.anhtran.securemdm.config;
 
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -7,7 +8,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties("mdm")
 public record MdmProperties(
     String accessKey,
-    String commandKey,
+    List<String> commandKeys,
+    String commandActiveKid,
+    String deviceCaKey,
     @DefaultValue("true") boolean secureCookies,
     long commandTtlMs,
     long leaseMs,

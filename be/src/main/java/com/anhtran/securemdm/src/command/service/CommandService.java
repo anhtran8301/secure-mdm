@@ -5,6 +5,7 @@ import com.anhtran.securemdm.security.Actor;
 import com.anhtran.securemdm.src.command.dto.request.CommandResultRequest;
 import com.anhtran.securemdm.src.command.dto.request.CreateCommandRequest;
 import com.anhtran.securemdm.src.command.dto.response.CommandClaimResponse;
+import com.anhtran.securemdm.src.command.dto.response.CommandKeysResponse;
 import com.anhtran.securemdm.src.command.dto.response.CommandResponse;
 import reactor.core.publisher.Mono;
 
@@ -24,4 +25,7 @@ public interface CommandService {
   Mono<Void> reconcile(String organizationId, String deviceId);
 
   Mono<Void> sweep();
+
+  /** The published command keys, signed once by each of them, for devices to refresh trust. */
+  Mono<CommandKeysResponse> commandKeys();
 }

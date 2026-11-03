@@ -15,4 +15,7 @@ public interface DeviceService {
   Mono<DeviceResponse> get(Actor actor, String deviceId);
 
   Mono<PageResponse<DeviceResponse>> list(Actor actor, String search, int page, int size);
+
+  /** Deletes used Device Proof ids whose proofs can no longer pass the issue-time check. */
+  Mono<Void> purgeProofReplays();
 }
