@@ -8,10 +8,13 @@ import { save, load, withLock, type State } from './state.js';
 const initial = (): State => ({
   deviceId: 'device-test',
   organizationId: 'tenant-test',
-  credential: 'test-only',
+  serial: '7f01',
+  certificate: 'test-only',
+  deviceKey: { kty: 'EC' },
   expiresAt: 0,
   inventory: {
     screenLockEnabled: false,
+    diskEncrypted: false,
     androidApiLevel: 35,
     installedPackages: [],
   },

@@ -1,6 +1,8 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { load, save, type State } from './state.js';
+import { load, save, writeJson, type State } from './state.js';
+import { refreshTrust, type TrustStore } from './trust.js';
+import { checkIssued, newDeviceKey, proof } from './pki.js';
 import { execute, verifier } from './commands.js';
 
 export class ApiError extends Error {
@@ -9,7 +11,17 @@ export class ApiError extends Error {
   }
 }
 export class InterruptedAfterResult extends Error {}
-export function api(base: string, credential?: string) {
+/** State from before device certificates (bearer credential, no device key): cannot authenticate. */
+export class LegacyState extends Error {
+  constructor() {
+    super(
+      'This state was enrolled before device certificates and can no longer authenticate. ' +
+        'Enroll again with a new --state directory (or an empty volume) and a new --uid.'
+    );
+  }
+}
+/** Calls the API; with a device identity, every request carries a fresh Device Proof. */
+export function api(base: string, device?: Pick<State, 'deviceKey' | 'serial'>) {
   const url = new URL(base);
   if (
     url.protocol !== 'https:' &&
@@ -17,13 +29,19 @@ export function api(base: string, credential?: string) {
   )
     throw new Error('Use HTTPS except for loopback development');
   return async (path: string, body?: unknown) => {
-    const response = await fetch(`${base.replace(/\/$/, '')}/api/v1${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
+    const target = `${base.replace(/\/$/, '')}/api/v1${path}`;
+    const method = body === undefined ? 'GET' : 'POST';
+    const { pathname, search } = new URL(target);
+    const authorization = device
+      ? `DeviceProof ${await proof(device.deviceKey, device.serial, method, pathname + search)}`
+      : undefined;
+    const response = await fetch(target, {
+      method,
       redirect: 'error',
       signal: AbortSignal.timeout(10000),
       headers: {
         'Content-Type': 'application/json',
-        ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
+        ...(authorization ? { Authorization: authorization } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
@@ -39,15 +57,24 @@ export async function enroll(base: string, dir: string, token: string, uid: stri
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  const identity = await api(base)('/device-enrollments', {
+  const { csr, privateJwk } = await newDeviceKey();
+  const issued = await api(base)('/device-enrollments', {
     token,
     deviceUid: uid,
     name,
+    csr,
   });
+  await checkIssued(issued.certificate, issued.caCertificate, privateJwk);
   const state: State = {
-    ...identity,
+    deviceId: issued.deviceId,
+    organizationId: issued.organizationId,
+    serial: issued.serial,
+    certificate: issued.certificate,
+    deviceKey: privateJwk,
+    expiresAt: issued.expiresAt,
     inventory: {
       screenLockEnabled: false,
+      diskEncrypted: false,
       androidApiLevel: 35,
       installedPackages: ['com.example.browser'],
     },
@@ -63,6 +90,8 @@ async function synchronize(state: State, request: ReturnType<typeof api>) {
   if (assignment.policy) {
     const config = assignment.policy.config;
     if (config.requireScreenLock) state.inventory.screenLockEnabled = true;
+    // Simulated FileVault/FBE: a real agent would ask the OS to encrypt and report its status.
+    if (config.requireDiskEncryption) state.inventory.diskEncrypted = true;
     state.inventory.installedPackages = state.inventory.installedPackages.filter(
       (p) => !config.blockedPackages.includes(p)
     );
@@ -81,6 +110,26 @@ async function synchronize(state: State, request: ReturnType<typeof api>) {
   }
   await request('/device-agent/heartbeat', state.inventory);
 }
+/** The provisioned trust file is the anchor; refreshed trust lives in the writable state dir. */
+async function readTrust(dir: string, trustFile: string): Promise<TrustStore> {
+  try {
+    return JSON.parse(await readFile(join(dir, 'trust.json'), 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return JSON.parse(await readFile(trustFile, 'utf8'));
+  }
+}
+async function followKeyRotation(dir: string, trustFile: string, request: ReturnType<typeof api>) {
+  try {
+    const { bundles } = await request('/device-agent/command-keys');
+    const next = await refreshTrust(await readTrust(dir, trustFile), bundles);
+    if (next) await writeJson(dir, 'trust.json', next);
+    else console.warn('No trust bundle verified; keeping current command keys');
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) throw error;
+    console.warn('Trust refresh failed; keeping current command keys');
+  }
+}
 export async function tick(
   base: string,
   dir: string,
@@ -88,14 +137,16 @@ export async function tick(
   options: { heartbeat: boolean; crash?: boolean; fail?: boolean }
 ) {
   const state = await load(dir);
-  const request = api(base, state.credential);
+  if (!state.deviceKey || !state.serial) throw new LegacyState();
+  const request = api(base, state);
   if (options.heartbeat) {
     await synchronize(state, request);
     await save(dir, state);
+    await followKeyRotation(dir, trustFile, request);
   }
   const claim = await request('/device-agent/commands/claim', {});
   if (!claim) return false;
-  const keys = verifier(JSON.parse(await readFile(trustFile, 'utf8')));
+  const keys = verifier(await readTrust(dir, trustFile));
   const execution = await execute(
     state,
     claim.signedCommand,

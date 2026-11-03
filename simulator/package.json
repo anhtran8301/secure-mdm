@@ -1,7 +1,32 @@
 {
-  "name": "secure-mdm-simulator", "version": "1.0.0", "private": true, "type": "module",
-  "packageManager": "yarn@1.22.22", "engines": { "node": ">=24" },
-  "scripts": { "dev": "tsx src/cli.ts", "build": "tsc", "typecheck": "tsc --noEmit", "test": "vitest run", "start": "node dist/cli.js" },
-  "dependencies": { "jose": "^6.1.0", "proper-lockfile": "^4.1.2" },
-  "devDependencies": { "@types/node": "^24", "@types/proper-lockfile": "^4.1.4", "tsx": "^4.20.0", "typescript": "^5.8.2", "vitest": "^3.2.4" }
+  "name": "secure-mdm-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "yarn@1.22.22",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@peculiar/asn1-schema": "^3.0.0",
+    "@peculiar/x509": "^3.1.0",
+    "asn1js": "^4.0.0",
+    "jose": "^6.1.0",
+    "proper-lockfile": "^4.1.2",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/proper-lockfile": "^4.1.4",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
+  }
 }

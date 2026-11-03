@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 import { setTimeout } from 'node:timers/promises';
 import { resolve } from 'node:path';
 import { withLock, load } from './state.js';
-import { api, enroll, tick, ApiError, InterruptedAfterResult } from './agent.js';
+import { api, enroll, tick, ApiError, InterruptedAfterResult, LegacyState } from './agent.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -38,6 +38,7 @@ async function main() {
             {
               deviceId: state.deviceId,
               organizationId: state.organizationId,
+              certificateSerial: state.serial,
               expiresAt: state.expiresAt,
               inventory: state.inventory,
               policyRevision: state.policyRevision,
@@ -77,6 +78,7 @@ async function main() {
           } catch (error) {
             if (
               error instanceof InterruptedAfterResult ||
+              error instanceof LegacyState ||
               (error instanceof ApiError && error.status === 401) ||
               values.once
             )
