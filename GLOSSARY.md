@@ -32,20 +32,34 @@ _Avoid_: Agent, endpoint, client
 A one-time, short-lived secret an admin issues so that one device can enroll.
 _Avoid_: Invite, registration code
 
-**Device Credential**:
-The secret a device uses to authenticate after enrollment; revoking it cuts the device off.
+**Device Key**:
+The EC P-256 key pair a device generates at enrollment; the private half never leaves the device.
+_Avoid_: Device secret
+
+**CSR**:
+The certificate signing request a device sends at enrollment, signed by its device key.
+
+**Device CA**:
+The backend's internal certificate authority that issues device certificates.
+
+**Device Certificate**:
+The X.509 certificate binding a device key to one device, valid 30 days; revoking the device revokes it.
+_Avoid_: Device credential (the old bearer secret, now removed)
+
+**Device Proof**:
+A short signed token a device attaches to every request, proving it holds the device key.
 
 **Heartbeat**:
 A device's periodic check-in with its current inventory.
 
 **Inventory**:
-The device state it reports: screen lock, Android API level, installed packages.
+The device state it reports: screen lock, disk encryption, Android API level, installed packages.
 
 **Connectivity**:
 ONLINE when a heartbeat arrived within the offline window, otherwise OFFLINE; REVOKED once revoked.
 
 **Revocation**:
-Permanently disabling a device: its credential stops working and its open commands are closed.
+Permanently disabling a device: its certificate is revoked and its open commands are closed.
 
 ## Policies
 
@@ -73,6 +87,12 @@ A device's evaluation of its assignment, bound to the assignment revision it was
 **Command**:
 A signed instruction for one device (REPORT_STATUS, SYNC_DEVICE, SHOW_MESSAGE, LOCK_DEVICE_SIMULATED).
 _Avoid_: Job, task, action
+
+**Command Key**:
+A key the backend signs commands with. One is active (signs); several may be published (trusted).
+
+**Trust Bundle**:
+The signed list of published command keys a device fetches to learn about key rotation.
 
 **Claim**:
 A device taking the oldest pending command from its queue.

@@ -1,6 +1,6 @@
 # SecureMDM
 
-Portfolio Mobile Device Management: Java reactive backend, React admin console và TypeScript device simulator. Demo tập trung vào tenant isolation, lifecycle credential, signed command queue và policy compliance; **mọi tác động trên thiết bị đều mô phỏng**.
+Portfolio Mobile Device Management: Java reactive backend, React admin console và TypeScript device simulator. Demo tập trung vào tenant isolation, device PKI (CSR → X.509, proof-of-possession, thu hồi), rotation khóa ký lệnh, signed command queue và policy compliance; **mọi tác động trên thiết bị đều mô phỏng**.
 
 ## Chạy demo bằng Docker
 
@@ -10,6 +10,8 @@ Yêu cầu: Docker Compose v2, Node 24 (tạo khóa), khoảng 4 GB RAM trống.
 node scripts/keys.mjs
 docker compose --env-file .local/demo.env up -d --build
 ```
+
+Nâng cấp từ bản trước device PKI: chạy lại `node scripts/keys.mjs`. Lệnh này tạo thêm `device-ca.json` và giữ nguyên các khóa cũ. Thiết bị đã enroll bằng credential cũ phải enroll lại với state directory mới.
 
 Mở **http://127.0.0.1:8081**. Backend: http://127.0.0.1:8080; MySQL chỉ bind loopback 3307. Đợi backend khởi động và migrations hoàn tất (`docker compose --env-file .local/demo.env logs backend`).
 
@@ -69,7 +71,7 @@ corepack yarn dev run --state ../.local/android-demo
 corepack yarn dev status --state ../.local/android-demo
 ```
 
-Mỗi simulator dùng **state directory và UID riêng**. Restart dùng lại directory. Credential hết hạn/thu hồi: cấp enrollment token mới, chọn directory và UID mới; registry cũ được giữ để truy vết. UID/inventory không phải hardware attestation. Chỉ HTTPS được chấp nhận, ngoại lệ HTTP loopback cho demo.
+Mỗi simulator dùng **state directory và UID riêng**. Restart dùng lại directory. Chứng chỉ thiết bị hết hạn/thu hồi: cấp enrollment token mới, chọn directory và UID mới; registry cũ được giữ để truy vết. UID/inventory không phải hardware attestation. Chỉ HTTPS được chấp nhận, ngoại lệ HTTP loopback cho demo.
 
 ## Kiểm thử
 
@@ -105,4 +107,4 @@ Chạy `be/./mvnw verify` và cài dependency frontend/simulator trước E2E. P
 - [Kịch bản phỏng vấn 5–7 phút và rotation](docs/DEMO.md)
 - [Bằng chứng kiểm thử và review](docs/VERIFICATION.md)
 
-Phạm vi sau demo: Android Enterprise/iOS agent thật, attestation, FCM, mTLS, SCEP/EST, KMS và cloud. Không triển khai remote wipe hoặc điều khiển thiết bị thật trong bản này. Triển khai ngoài máy cá nhân cần HTTPS, `SECURE_COOKIES=true`, khóa/secrets và cấu hình production riêng; Docker Compose hiện tại chỉ dành cho demo loopback.
+Phạm vi sau demo: Android Enterprise/iOS agent thật, key attestation và khóa trong Keystore/StrongBox/Secure Enclave, gia hạn chứng chỉ, FCM, mTLS, SCEP/EST, CRL/OCSP, KMS và cloud. Không triển khai remote wipe hoặc điều khiển thiết bị thật trong bản này. Triển khai ngoài máy cá nhân cần HTTPS, `SECURE_COOKIES=true`, khóa/secrets và cấu hình production riêng; Docker Compose hiện tại chỉ dành cho demo loopback.

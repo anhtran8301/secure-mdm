@@ -24,13 +24,13 @@ corepack yarn dev status --state ../.local/android-demo
 
 ## Signing-key rotation
 
-`scripts/keys.mjs` tạo command-1/command-2 và JWKS public chứa cả hai. Đây là **pre-distribution**: đưa JWKS này tới simulator trước khi đổi signer.
+Quy trình theo [ADR 0006](adr/0006-command-key-rotation-signed-trust-bundle.md). Simulator chỉ được cấp sẵn public key `command-1` (`command-public.json`). Các khóa sau đó, nó học qua `GET /device-agent/command-keys` mỗi lần heartbeat. Endpoint này trả cùng một danh sách khóa, ký riêng bằng từng khóa đang publish. Simulator chỉ nhận bản ký bởi khóa nó đã tin, và lưu trust mới vào `<state>/trust.json`.
 
-1. Đang dùng `command-1.json`: gửi lệnh A, để pending.
-2. Kiểm tra trusted JWKS của mọi simulator đã có `command-2` (không chép private JWK sang simulator).
-3. Với Docker: `COMMAND_KEY_NAME=command-2.json docker compose --env-file .local/demo.env up -d --no-deps --force-recreate backend`. Với local launcher, dừng và chạy backend với command key mới qua cấu hình riêng (launcher mặc định command-1; có thể chạy jar trực tiếp với `COMMAND_KEY_FILE`).
-4. Gửi lệnh B. Simulator chấp nhận cả A (key cũ) và B (key mới); fixture Java–TypeScript cũng kiểm tra hai chữ ký.
-5. Giữ key1 trong trust store đến khi tất cả command cũ terminal/hết TTL. Sau đó mới bỏ public key1. Không xóa private key bằng script tự động. Bản demo chưa có administrative rotation API/KMS.
+1. **Publish**: chạy backend với `COMMAND_KEY_FILES=/keys/command-1.json,/keys/command-2.json COMMAND_ACTIVE_KID=command-1`. Gửi lệnh A, để pending. Đợi một heartbeat (15 s), rồi kiểm tra `trust.json` của simulator đã có `command-2`.
+2. **Switch**: đổi `COMMAND_ACTIVE_KID=command-2`, giữ nguyên hai file khóa, rồi recreate backend (`docker compose --env-file .local/demo.env up -d --no-deps --force-recreate backend`). Gửi lệnh B. Simulator chấp nhận cả A (khóa cũ) lẫn B (khóa mới). Thiết bị bỏ lỡ bước 1 vẫn bắt kịp qua bundle ký bằng `command-1`.
+3. **Retire**: chỉ sau ít nhất `mdm.command-ttl-ms` (10 phút) kể từ bước 2, khi mọi lệnh ký bằng `command-1` đã hết hạn, mới đặt `COMMAND_KEY_FILES=/keys/command-2.json`. Thiết bị không heartbeat lần nào trong khoảng từ bước 1 tới bước 3 sẽ phải được cấp lại trust.
+
+Không có API quản trị để rotation hay KMS. Private key không bao giờ rời backend.
 
 ## Chuẩn bị trước buổi demo
 
